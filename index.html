@@ -47,6 +47,7 @@
   }
   .tick.tl { top: 26px; left: 32px; }
   .tick.bl { bottom: 26px; left: 32px; }
+  .tick.tr { top: 26px; right: 32px; }
 
   #stage {
     position: fixed;
@@ -80,6 +81,7 @@
     height: 56px;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     padding: 0 20px;
     font-size: 19px;
     letter-spacing: 0.02em;
@@ -106,6 +108,24 @@
     pointer-events: none;
   }
   .frame-img.active { opacity: 1; }
+
+  .finance-btn {
+    flex-shrink: 0;
+    padding: 8px 16px;
+    font-size: 14px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--panel-edge);
+    color: var(--ink-dim);
+    border-radius: 3px;
+    touch-action: manipulation;
+  }
+  .finance-btn.active {
+    color: var(--ink);
+    background: rgba(255,255,255,0.14);
+    border-color: var(--accent);
+  }
 
   /* ---------- sequence controls: sits BELOW the frame, external ---------- */
   .seq-controls {
@@ -204,28 +224,31 @@
     border-left: 4px solid var(--accent);
   }
 
-  /* the "eco value" group: its own tab (1 part) + 2x3 sub-grid (2 parts) */
-  .layer-group {
-    flex: 3;
-    display: flex;
-    flex-direction: column;
-    border-bottom: 1px solid var(--panel-edge);
-  }
-  .layer-group.gap-before { margin-top: 40px; position: relative; }
-  .layer-group.gap-before::before {
+  /* "eco upgrade" is a normal tab like any other; its 2x2 sub-grid flies
+     out to the right, only while this tab is the active one */
+  .layer-tab.gap-before { margin-top: 40px; position: relative; }
+  .layer-tab.gap-before::before {
     content: '';
     position: absolute;
     top: -20px; left: 14px; right: 14px;
     border-top: 1px solid var(--panel-edge);
   }
-  .layer-group .layer-tab { border-bottom: 1px solid var(--panel-edge); }
 
   .layer-subgrid {
-    flex: 2;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    position: absolute;
+    top: 0; left: 100%;
+    height: 100%;
+    width: 220px;
+    display: none;
+    grid-template-columns: repeat(2, 1fr);
     grid-template-rows: repeat(2, 1fr);
+    background: #161616;
+    border: 1px solid var(--panel-edge);
+    border-left: none;
+    z-index: 50;
+    box-shadow: 20px 0 40px -10px rgba(0,0,0,0.7);
   }
+  .layer-tab.active .layer-subgrid { display: grid; }
   .layer-subgrid-cell {
     display: flex;
     align-items: center;
@@ -236,7 +259,7 @@
     border-top: 1px solid var(--panel-edge);
     touch-action: manipulation;
   }
-  .layer-subgrid-cell:nth-child(3n) { border-right: none; }
+  .layer-subgrid-cell:nth-child(2n) { border-right: none; }
   .layer-subgrid-cell.active {
     color: var(--ink);
     background: rgba(255,255,255,0.1);
@@ -269,8 +292,9 @@
 <body>
 
 <div id="backdrop"></div>
-<div class="tick tl">52.6547 N · 13.1861 E</div>
-<div class="tick bl">BOGENSEE — DAUERAUSSTELLUNG</div>
+<div class="tick tl">52.538503 N · 13.359849 E</div>
+<div class="tick tr">52.774927 N · 13.52574 E</div>
+<div class="tick bl">COMPENSATION LAB e.V.</div>
 
 <div id="stage">
   <div id="canvas"><!-- items injected by JS from CONFIG --></div>
@@ -294,6 +318,9 @@
       Verhältnis behält.
       images: ["bild1.jpg", ...] (4 Stück)
       dates:  ["1990","2005","2015","2024"] (Text unter jedem Punkt)
+      finance: optional — Dateiname für eine zusätzliche "Finance"-
+               Ebene, per eigenem Button oben rechts im Rahmen
+               anwählbar (unabhängig vom Zeitstrahl)
       ratio:  Breite/Höhe des Rahmens — 1.41421 für Querformat (Plan),
               0.70711 für Hochformat (Bogensee plan/axo)
       w:      Breite des Rahmens in Pixel (Höhe ergibt sich aus ratio)
@@ -306,32 +333,60 @@
       eigenes Bild UND sechs Unter-Karten, macht zusammen 7 Karten.
       "gapBefore: true" fügt einen kleinen Abstand davor ein.
 
+   3) "image" — ein einzelnes statisches Bild, nur Titel + Rahmen,
+      kein Zeitstrahl/keine Reiter (z.B. die kleinen "Verortung"-
+      Kacheln).
+      src: Dateiname
+      ratio, w, x, y: wie oben
+
    ============================================================ */
 
 const TITLE_H = 56, CTRL_GAP = 20, CTRL_H = 90, TABS_W = 230;
 const RATIO_LANDSCAPE = 1.41421, RATIO_PORTRAIT = 0.70711, RATIO_MAP = 1.25;
+const RATIO_AXO_LEA = 906.964 / 785.412;       // reale Maße Axo Lea (Mettmannplatz)
+const RATIO_AXO_BOGENSEE = 994.572 / 791.887;  // reale Maße Axo Bogensee (Querformat)
 
 const CONFIG = [
   {
     type: "sequence",
-    label: "Lea plan",
-    images: ["lea-plan-1.jpg", "lea-plan-2.jpg", "lea-plan-3.jpg", "lea-plan-4.jpg"],
-    dates: ["Datum 1", "Datum 2", "Datum 3", "Datum 4"],
-    ratio: RATIO_LANDSCAPE, w: 576,
-    x: 60, y: 60
+    label: "Präsentation",
+    images: [
+      "präsi.jpg", "präsi2.jpg", "präsi3.jpg", "präsi4.jpg", "präsi5.jpg",
+      "präsi6.jpg", "präsi7.jpg", "präsi8.jpg", "präsi9.jpg", "präsi10.jpg", "präsi11.jpg"
+    ],
+    dates: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"],
+    noPlay: true,
+    ratio: 16 / 9, w: 380,
+    x: 1310, y: 10
   },
   {
     type: "sequence",
-    label: "Lea axo",
+    label: "Mettmannplatz axo",
     images: ["lea-axo-1.jpg", "lea-axo-2.jpg", "lea-axo-3.jpg", "lea-axo-4.jpg"],
-    dates: ["Datum 1", "Datum 2", "Datum 3", "Datum 4"],
-    ratio: RATIO_LANDSCAPE, w: 576,
-    x: 60, y: 663
+    dates: ["spring", "summer", "autumn", "winter"],
+    ratio: RATIO_AXO_LEA, w: 651,
+    x: 120, y: 430
+  },
+  {
+    type: "image",
+    label: "overview Mettmannplatz",
+    src: "overview-mettmannplatz.jpg",
+    ratio: 1.6, w: 360,
+    x: 120, y: 1200
+  },
+  {
+    type: "sequence",
+    label: "Mettmannplatz plan",
+    images: ["lea-plan-1.jpg", "lea-plan-2.jpg", "lea-plan-3.jpg", "lea-plan-4.jpg", "lea-plan-5.jpg"],
+    dates: ["2026", "2032", "2037", "2042", "after 2052"],
+    finance: "lea-plan-finance.jpg",
+    ratio: RATIO_LANDSCAPE, w: 1100,
+    x: 530, y: 1200
   },
   {
     type: "layered",
     label: "Map",
-    ratio: RATIO_MAP, w: 1400,
+    ratio: RATIO_MAP, w: 843,
     layers: [
       { src: "analysis.jpg", tab: "analysis" },
       { src: "typology.jpg", tab: "typology" },
@@ -343,31 +398,37 @@ const CONFIG = [
           { src: "eco1.jpg", tab: "I" },
           { src: "eco2.jpg", tab: "II" },
           { src: "eco3.jpg", tab: "III" },
-          { src: "eco4.jpg", tab: "IV" },
-          { src: "ecovalue-5.jpg", tab: "V" },
-          { src: "ecovalue-6.jpg", tab: "VI" }
+          { src: "eco4.jpg", tab: "IV" }
         ]
       },
       { src: "weakness.jpg", tab: "weakness" },
       { src: "state.owned.jpg", tab: "state owned" }
     ],
-    x: 706, y: 60
+    x: 1310, y: 430
+  },
+  {
+    type: "sequence",
+    label: "Axo bogensee",
+    images: ["bogensee-axo-1.jpg", "bogensee-axo-2.jpg", "bogensee-axo-3.jpg", "bogensee-axo-4.jpg"],
+    dates: ["spring", "summer", "autumn", "winter"],
+    ratio: RATIO_AXO_BOGENSEE, w: 977,
+    x: 1910, y: 1200
   },
   {
     type: "sequence",
     label: "Bogensee plan",
-    images: ["bogensee-plan-1.jpg", "bogensee-plan-2.jpg", "bogensee-plan-3.jpg", "bogensee-plan-4.jpg"],
-    dates: ["Datum 1", "Datum 2", "Datum 3", "Datum 4"],
-    ratio: RATIO_PORTRAIT, w: 550,
-    x: 2406, y: 60
+    images: ["bogensee-plan-1.jpg", "bogensee-plan-2.jpg", "bogensee-plan-3.jpg", "bogensee-plan-4.jpg", "bogensee-plan-5.jpg"],
+    dates: ["2026", "2032", "2037", "2042", "after 2052"],
+    finance: "bogensee-plan-finance.jpg",
+    ratio: RATIO_PORTRAIT, w: 720,
+    x: 2950, y: 630
   },
   {
-    type: "sequence",
-    label: "Bogensee axo",
-    images: ["bogensee-axo-1.jpg", "bogensee-axo-2.jpg", "bogensee-axo-3.jpg", "bogensee-axo-4.jpg"],
-    dates: ["Datum 1", "Datum 2", "Datum 3", "Datum 4"],
-    ratio: RATIO_LANDSCAPE, w: 778,
-    x: 3006, y: 60
+    type: "image",
+    label: "overview Bogensee",
+    src: "overview-bogensee.jpg",
+    ratio: 1.6, w: 360,
+    x: 2950, y: 1863
   }
 ];
 
@@ -427,8 +488,11 @@ CONFIG.forEach((entry) => {
   if (entry.type === 'sequence') {
     totalW = entry.w;
     totalH = TITLE_H + frameH + CTRL_GAP + CTRL_H;
-  } else {
+  } else if (entry.type === 'layered') {
     totalW = entry.w + TABS_W;
+    totalH = TITLE_H + frameH;
+  } else { // "image"
+    totalW = entry.w;
     totalH = TITLE_H + frameH;
   }
 
@@ -466,9 +530,12 @@ CONFIG.forEach((entry) => {
     controls.className = 'seq-controls';
     controls.style.marginTop = CTRL_GAP + 'px';
 
-    const playBtn = document.createElement('div');
-    playBtn.className = 'seq-play-btn';
-    playBtn.innerHTML = PLAY_SVG;
+    let playBtn = null;
+    if (!entry.noPlay) {
+      playBtn = document.createElement('div');
+      playBtn.className = 'seq-play-btn';
+      playBtn.innerHTML = PLAY_SVG;
+    }
 
     const timeline = document.createElement('div');
     timeline.className = 'seq-timeline';
@@ -494,14 +561,29 @@ CONFIG.forEach((entry) => {
       timeline.appendChild(dateLabel);
     });
 
-    controls.appendChild(playBtn);
+    let financeImg = null, financeBtn = null;
+    if (entry.finance) {
+      financeImg = document.createElement('img');
+      financeImg.className = 'frame-img';
+      financeImg.src = entry.finance;
+      financeImg.alt = entry.label + ' – Finance';
+      frame.appendChild(financeImg);
+
+      financeBtn = document.createElement('div');
+      financeBtn.className = 'finance-btn';
+      financeBtn.textContent = 'Finance';
+      titleEl.appendChild(financeBtn);
+    }
+
+    if (playBtn) controls.appendChild(playBtn);
     controls.appendChild(timeline);
     inner.appendChild(frame);
     inner.appendChild(controls);
 
     sequenceState.set(item, {
       imgEls, tickEls: pointEls, dateEls: timeline.querySelectorAll('.seq-date'),
-      playBtn, idx: 0, playing: false, timer: null
+      playBtn, idx: 0, playing: false, timer: null,
+      financeImg, financeBtn, financeActive: false
     });
 
   } else if (entry.type === 'layered') {
@@ -529,16 +611,12 @@ CONFIG.forEach((entry) => {
       frame.appendChild(img);
 
       const tab = document.createElement('div');
-      tab.className = 'layer-tab' + (layer.subGrid ? '' : (layer.gapBefore ? ' gap-before' : ''));
+      tab.className = 'layer-tab' + (layer.gapBefore ? ' gap-before' : '');
       tab.textContent = layer.tab;
       tab._img = img;
       if (!firstAssigned) { tab.classList.add('active'); firstAssigned = true; }
 
       if (layer.subGrid) {
-        const group = document.createElement('div');
-        group.className = 'layer-group' + (layer.gapBefore ? ' gap-before' : '');
-        group.appendChild(tab);
-
         const grid = document.createElement('div');
         grid.className = 'layer-subgrid';
         layer.subGrid.forEach((sub) => {
@@ -554,16 +632,27 @@ CONFIG.forEach((entry) => {
           cell._img = simg;
           grid.appendChild(cell);
         });
-        group.appendChild(grid);
-        tabsCol.appendChild(group);
-      } else {
-        tabsCol.appendChild(tab);
+        tab.appendChild(grid);
       }
+      tabsCol.appendChild(tab);
     });
 
     row.appendChild(frame);
     row.appendChild(tabsCol);
     inner.appendChild(row);
+
+  } else if (entry.type === 'image') {
+    const frame = document.createElement('div');
+    frame.className = 'tile-frame';
+    frame.style.height = frameH + 'px';
+
+    const img = document.createElement('img');
+    img.className = 'frame-img active';
+    img.src = entry.src;
+    img.alt = entry.label;
+    frame.appendChild(img);
+
+    inner.appendChild(frame);
   }
 
   canvas.appendChild(item);
@@ -572,6 +661,11 @@ CONFIG.forEach((entry) => {
 // --- sequence player logic ---
 function seqSetActive(state, idx) {
   state.idx = idx;
+  if (state.financeActive) {
+    state.financeActive = false;
+    if (state.financeImg) state.financeImg.classList.remove('active');
+    if (state.financeBtn) state.financeBtn.classList.remove('active');
+  }
   state.imgEls.forEach((im, k) => im.classList.toggle('active', k === idx));
   state.tickEls.forEach((t, k) => t.classList.toggle('active', k === idx));
   state.dateEls.forEach((d, k) => d.classList.toggle('active', k === idx));
@@ -589,12 +683,27 @@ function seqStop(state) {
   state.playBtn.innerHTML = PLAY_SVG;
   clearInterval(state.timer);
 }
+function financeToggle(state) {
+  state.financeActive = !state.financeActive;
+  if (state.financeActive) {
+    seqStop(state);
+    state.imgEls.forEach((im) => im.classList.remove('active'));
+    state.financeImg.classList.add('active');
+    state.financeBtn.classList.add('active');
+  } else {
+    state.financeImg.classList.remove('active');
+    state.financeBtn.classList.remove('active');
+    state.imgEls[state.idx].classList.add('active');
+  }
+}
 
 // --- layered-map selection: one shared "active" state across all tabs
 // and sub-grid cells within a tile, whichever was tapped last ---
 function mapSelect(item, chosenEl) {
   item.querySelectorAll('.layer-tab').forEach((t) => t.classList.remove('active'));
   item.querySelectorAll('.layer-subgrid-cell').forEach((c) => c.classList.remove('active'));
+  const parentTab = chosenEl.classList.contains('layer-tab') ? chosenEl : chosenEl.closest('.layer-tab');
+  if (parentTab) parentTab.classList.add('active');
   chosenEl.classList.add('active');
   item.querySelectorAll('.frame-img').forEach((im) => im.classList.toggle('active', im === chosenEl._img));
 }
@@ -695,8 +804,9 @@ function handlePointerUp(e) {
   if (target) {
     const cellEl = target.closest('.layer-subgrid-cell');
     const tabEl = !cellEl ? target.closest('.layer-tab') : null;
-    const playBtnEl = target.closest('.seq-play-btn');
-    const tickEl = !playBtnEl ? target.closest('.seq-point') : null;
+    const financeBtnEl = target.closest('.finance-btn');
+    const playBtnEl = !financeBtnEl ? target.closest('.seq-play-btn') : null;
+    const tickEl = !playBtnEl && !financeBtnEl ? target.closest('.seq-point') : null;
 
     if (cellEl) {
       hitInteractive = true;
@@ -704,6 +814,11 @@ function handlePointerUp(e) {
     } else if (tabEl) {
       hitInteractive = true;
       mapSelect(tabEl.closest('.item'), tabEl);
+    } else if (financeBtnEl) {
+      hitInteractive = true;
+      const item = financeBtnEl.closest('.item');
+      const state = sequenceState.get(item);
+      if (state) { financeToggle(state); }
     } else if (playBtnEl) {
       hitInteractive = true;
       const item = playBtnEl.closest('.item');
